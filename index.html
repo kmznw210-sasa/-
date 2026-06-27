@@ -1,0 +1,100 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <title>간단한 Q&A 사이트</title>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+</head>
+<body>
+
+    <h1>Q&A 게시판</h1>
+    
+    <div style="margin-bottom: 30px; padding: 15px; border: 1px solid #000; background-color: #f9f9f9;">
+        <h3>새 질문 작성하기</h3>
+        <input type="text" id="input-title" placeholder="질문 제목을 입력하세요" style="width: 100%; margin-bottom: 10px;"><br>
+        <textarea id="input-content" placeholder="질문 내용을 입력하세요" style="width: 100%; height: 80px; margin-bottom: 10px;"></textarea><br>
+        <button onclick="submitQuestion()">질문 등록</button>
+    </div>
+
+    <hr>
+
+    <h2>질문 목록</h2>
+    <div id="qa-list">로딩 중...</div>
+
+    <script>
+        const SUPABASE_URL = 'https://ofhjiwnvoqrtflvebicm.supabase.co';
+        const SUPABASE_KEY = 'sb_publishable_U256EB4c_6EyjzTtkovS_A_X8IdnnJz';
+        const supabaseClient = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+
+        // [목록 불러오기 함수]
+        async function fetchQuestions() {
+            const { data, error } = await supabaseClient
+                .from('questions')
+                .select('*')
+                .order('created_at', { ascending: false });
+
+            if (error) {
+                console.error('에러 발생:', error);
+                return;
+            }
+
+            const qaListDiv = document.getElementById('qa-list');
+            
+            if (data.length === 0) {
+                qaListDiv.innerHTML = '<p>아직 등록된 질문이 없습니다.</p>';
+                return;
+            }
+
+            let htmlContent = '';
+            data.forEach(item => {
+                const answerText = item.answer ? item.answer : '아직 답변이 등록되지 않았습니다.';
+                htmlContent += `
+                    <div style="border-bottom: 1px solid #ccc; padding: 10px 0;">
+                        <h3>Q. ${item.title}</h3>
+                        <p><strong>질문 내용:</strong> ${item.content}</p>
+                        <p style="color: blue;"><strong>A.</strong> ${answerText}</p>
+                    </div>
+                `;
+            });
+            qaListDiv.innerHTML = htmlContent;
+        }
+
+        // [질문 등록 함수]
+        async function submitQuestion() {
+            const titleValue = document.getElementById('input-title').value;
+            const contentValue = document.getElementById('input-content').value;
+
+            if (!titleValue || !contentValue) {
+                alert('제목과 내용을 모두 입력해 주세요!');
+                return;
+            }
+
+            const { error } = await supabaseClient
+                .from('questions')
+                .insert([{ title: titleValue, content: contentValue }]);
+
+            if (error) {
+                alert('등록 실패');
+                return;
+            }
+
+            alert('질문이 성공적으로 등록되었습니다!');
+            document.getElementById('input-title').value = '';
+            document.getElementById('input-content').value = '';
+            // 실시간 리스너가 작동하므로 여기서는 fetchQuestions()를 굳이 중복 호출하지 않아도 자동으로 갱신됩니다!
+        }
+
+        // 1. 처음 페이지 켰을 때 목록 가져오기
+        fetchQuestions();
+
+        // 2. 💡 [실시간 연동] DB에 변화(Insert, Update 등)가 생기면 즉시 fetchQuestions를 실행하라는 특수 청취기입니다.
+        supabaseClient
+            .channel('schema-db-changes')
+            .on('postgres_changes', { event: '*', schema: 'public', table: 'questions' }, (payload) => {
+                console.log('DB 변경 감지됨!', payload);
+                fetchQuestions(); 
+            })
+            .subscribe();
+    </script>
+</body>
+</html>
